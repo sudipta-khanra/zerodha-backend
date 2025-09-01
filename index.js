@@ -19,10 +19,13 @@ app.use(
       "http://localhost:3000",
       "http://localhost:3001",
       "http://localhost:3002",
+      "https://zerodha-frontend-two.vercel.app",
+      "https://zerodha-dashboard-rose.vercel.app"
     ],
     credentials: true,
   })
 );
+
 app.use(bodyParser.json());
 app.use("/api/auth", authRoutes);
 
