@@ -4,25 +4,15 @@ const express = require("express");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const cookieParser = require("cookie-parser");
-const axios = require("axios");
+const authRoutes = require("./routes/authRoutes");
+const auth = require("./middleware/auth"); // your JWT auth middleware
 const { HoldingsModel } = require("./Model/HoldingsModel");
-const { PositionsModel } = require("./Model/PositionsModel");
 const { OrdersModel } = require("./Model/OrdersModel");
-const router = express.Router();
-const User = require("./Model/UserModel");
-const bcrypt = require("bcryptjs");
+const { PositionsModel } = require("./Model/PositionsModel");
 const jwt = require("jsonwebtoken");
-const JWT_SECRET = process.env.JWT_SECRET;
 const { MONGO_URL, PORT } = process.env;
-const authRoutes = require("./routes/authRoutes.js");
-// const stockRoutes = require("./routes/stocks");
-
-// const PORT = process.env.PORT || 3002;
-
 const app = express();
 
-// ✅ Middlewares first
 app.use(
   cors({
     origin: [
@@ -34,82 +24,18 @@ app.use(
   })
 );
 app.use(bodyParser.json());
+app.use("/api/auth", authRoutes);
 
-// ✅ Connect to MongoDB once
 mongoose
-  .connect(MONGO_URL, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(MONGO_URL, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log("MongoDB connected successfully"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
-// ✅ API Routes
 app.get("/allHoldings", async (req, res) => {
   try {
-    const orders = await HoldingsModel.find({});
-
-    const holdings = orders.map((order) => {
-      const marketPrice = order.price + (Math.random() * 200 - 100); // simulate fluctuation
-      const curValue = marketPrice * order.qty;
-      const invested = order.price * order.qty;
-      const pnl = curValue - invested;
-
-      return {
-        name: order.name,
-        qty: order.qty,
-        avg: order.price, // avg = price of that order
-        price: marketPrice.toFixed(2), // current market price
-        curValue: curValue.toFixed(2),
-        invested: invested.toFixed(2),
-        pnl: pnl.toFixed(2),
-        net: ((pnl / invested) * 100).toFixed(2), // % change
-        day: (Math.random() * 4 - 2).toFixed(2), // mock daily change %
-        isLoss: pnl < 0,
-      };
-    });
-
-    res.json(holdings);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Something went wrong" });
-  }
-});
-
-app.get("/allPositions", async (req, res) => {
-  let allPositions = await PositionsModel.find({});
-  res.json(allPositions);
-});
-
-app.post("/newOrder", async (req, res) => {
-  let newOrder = new OrdersModel({
-    name: req.body.name,
-    qty: req.body.qty,
-    price: req.body.price,
-    mode: req.body.mode,
-  });
-  await newOrder.save();
-  res.send("Order saved!");
-});
-app.delete("/deleteAllOrders", async (req, res) => {
-  try {
-    const result = await OrdersModel.deleteMany({});
-    res.send({
-      success: true,
-      message: `Deleted ${result.deletedCount} orders successfully!`,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send({ success: false, message: "Error deleting orders" });
-  }
-});
-
-app.get("/allData", async (req, res) => {
-  try {
-    const holdingsRaw = await HoldingsModel.find({});
-
-    const holdings = holdingsRaw.map((order) => {
-      const marketPrice = order.price + (Math.random() * 200 - 100); // simulate fluctuation
+    const allOrders = await HoldingsModel.find();
+    const allHoldings = allOrders.map((order) => {
+      const marketPrice = order.price + (Math.random() * 200 - 100);
       const curValue = marketPrice * order.qty;
       const invested = order.price * order.qty;
       const pnl = curValue - invested;
@@ -125,37 +51,99 @@ app.get("/allData", async (req, res) => {
         net: ((pnl / invested) * 100).toFixed(2),
         day: (Math.random() * 4 - 2).toFixed(2),
         isLoss: pnl < 0,
+        user: order.user,
       };
     });
 
-    const orders = await OrdersModel.find({});
-    res.json({
-      holdings,
-      orders,
-    });
+    let userHoldings = [];
+
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        const userOrders = allOrders.filter(
+          (order) => order.user.toString() === decoded.id
+        );
+
+        userHoldings = userOrders.map((order) => {
+          const marketPrice = order.price + (Math.random() * 200 - 100);
+          const curValue = marketPrice * order.qty;
+          const invested = order.price * order.qty;
+          const pnl = curValue - invested;
+
+          return {
+            name: order.name,
+            qty: order.qty,
+            avg: order.price,
+            price: marketPrice.toFixed(2),
+            curValue: curValue.toFixed(2),
+            invested: invested.toFixed(2),
+            pnl: pnl.toFixed(2),
+            net: ((pnl / invested) * 100).toFixed(2),
+            day: (Math.random() * 4 - 2).toFixed(2),
+            isLoss: pnl < 0,
+          };
+        });
+      } catch (err) {
+        console.error("Token error:", err.message);
+      }
+    }
+
+    res.json({ allHoldings, userHoldings });
   } catch (err) {
-    console.error("Error in /allData:", err);
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong" });
   }
 });
 
-app.get("/allOrders", async (req, res) => {
+app.get("/allPositions", async (req, res) => {
   try {
-    const orders = await OrdersModel.find({});
+    const positions = await PositionsModel.find();
+    res.json(positions);
+  } catch (err) {
+    console.error(err);
+    res.json([]);
+  }
+});
+
+app.get("/allOrders", auth, async (req, res) => {
+  try {
+    const orders = await OrdersModel.find({ user: req.user.id });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-app.post("/sellOrder", async (req, res) => {
+
+app.post("/newOrder", auth, async (req, res) => {
+  try {
+    const newOrder = new OrdersModel({
+      user: req.user.id,
+      name: req.body.name,
+      qty: req.body.qty,
+      price: req.body.price,
+      mode: req.body.mode,
+    });
+    await newOrder.save();
+    res.json({ message: "Order saved!" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/sellOrder", auth, async (req, res) => {
   try {
     const { name, qty, price } = req.body;
 
-    // Find the order to sell from OrdersModel
-    const order = await OrdersModel.findOne({ name, mode: "BUY" });
+    const order = await OrdersModel.findOne({
+      user: req.user.id,
+      name,
+      mode: "BUY",
+    });
 
     if (!order) {
-      // Instead of sending an error, return JSON for modal
       return res.json({
         success: false,
         message: "You don't have any BUY order for this stock.",
@@ -169,7 +157,6 @@ app.post("/sellOrder", async (req, res) => {
       });
     }
 
-    // Reduce the quantity in the original order
     order.qty -= qty;
     if (order.qty === 0) {
       await OrdersModel.deleteOne({ _id: order._id });
@@ -177,8 +164,8 @@ app.post("/sellOrder", async (req, res) => {
       await order.save();
     }
 
-    // Save the sell order
     const sellOrder = new OrdersModel({
+      user: req.user.id,
       name,
       qty,
       price,
@@ -187,16 +174,23 @@ app.post("/sellOrder", async (req, res) => {
 
     await sellOrder.save();
 
+    res.json({ success: true, message: "Sell order processed successfully!" });
+  } catch (err) {
+    console.error(err);
+    res.json({ success: false, message: "Error processing sell order" });
+  }
+});
+
+app.delete("/deleteAllOrders", auth, async (req, res) => {
+  try {
+    const result = await OrdersModel.deleteMany({ user: req.user.id });
     res.json({
       success: true,
-      message: "Sell order processed successfully!",
+      message: `Deleted ${result.deletedCount} orders successfully!`,
     });
   } catch (err) {
-    console.error("Error in /sellOrder:", err);
-    res.json({
-      success: false,
-      message: "Error processing sell order",
-    });
+    console.error(err);
+    res.status(500).json({ success: false, message: "Error deleting orders" });
   }
 });
 

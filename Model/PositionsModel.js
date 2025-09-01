@@ -1,8 +1,7 @@
-const { model } = require("mongoose");
 const mongoose = require("mongoose");
+const { PositionsSchema } = require("../Schemas/PositionsSchema");
 
-const {PositionsSchema} = require("../Schemas/PositionsSchema");
-
-const PositionsModel = mongoose.model("position", PositionsSchema);
+// Use capitalized singular name for model
+const PositionsModel = mongoose.model("Position", PositionsSchema);
 
 module.exports = { PositionsModel };

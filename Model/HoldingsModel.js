@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const { HoldingsSchema } = require("../Schemas/HoldingsSchema");
 
-// Correct way to define model
-const HoldingsModel = mongoose.model("holding", HoldingsSchema);
+// Create the model
+const HoldingsModel = mongoose.model("Holding", HoldingsSchema);
 
 module.exports = { HoldingsModel };
